@@ -37,6 +37,25 @@ SMTP_PASS=klucz-smtp
 MAIL_FROM=Mikołajki <potwierdzony@adres.pl>
 ```
 
+## Wdrożenie na Render
+
+Plik `render.yaml` zawiera gotową konfigurację serwisu, testu zdrowia i trwałego dysku dla bazy SQLite.
+
+> Render pobiera kod wyłącznie z GitHub, GitLab albo Bitbucket. Repozytorium musi być dostępne u jednego z tych dostawców. Trwały dysk wymaga płatnego serwisu; wariant bez dysku utraci konta, wishlisty i wyniki po restarcie.
+
+1. Umieść repozytorium na GitHubie, GitLabie albo Bitbucket.
+2. Otwórz [Render Dashboard](https://dashboard.render.com/), wybierz **New → Blueprint** i połącz repozytorium.
+3. Render odczyta `render.yaml`. Podczas tworzenia wpisz wartości sekretów SMTP:
+   - `SMTP_HOST` — np. `smtp-relay.brevo.com`,
+   - `SMTP_PORT` — np. `587`,
+   - `SMTP_USER`,
+   - `SMTP_PASS`,
+   - `MAIL_FROM` — np. `Mikołajki <potwierdzony@adres.pl>`.
+4. Zatwierdź Blueprint i poczekaj, aż test `/api/health` uzyska status `healthy`.
+5. Otwórz logi pierwszego uruchomienia i bezpiecznie zapisz wygenerowane hasła startowe.
+
+Nie ustawiaj ręcznie `PORT` — Render przekazuje go automatycznie, a aplikacja już nasłuchuje na `0.0.0.0:$PORT`.
+
 ## Wdrożenie na Fly.io
 
 1. Zainstaluj `flyctl` i zaloguj się poleceniem `fly auth login`.

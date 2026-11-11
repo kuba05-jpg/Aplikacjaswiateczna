@@ -77,6 +77,10 @@ app.use(express.static(path.join(__dirname, "public"), { extensions: ["html"] })
 const loginAttempts = new Map();
 const sseClients = new Map();
 
+app.get("/api/health", (req, res) => {
+  res.json({ status: "ok" });
+});
+
 function cookies(req) {
   return Object.fromEntries(
     (req.headers.cookie || "")
