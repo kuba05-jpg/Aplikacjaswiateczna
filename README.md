@@ -1,6 +1,6 @@
 # 🎅 Święta na Czapli
 
-Prywatna aplikacja dla sześciu osób: Asia, Kacper, Ada, Mama, Tata i Kuba (administrator).
+Prywatna aplikacja dla pięciu osób: Asia, Kacper, Mama, Tata i Kuba (administrator).
 
 ## Możliwości
 
@@ -20,7 +20,7 @@ npm install
 DATABASE_URL=postgresql://uzytkownik:haslo@localhost:5432/mikolajki npm start
 ```
 
-Otwórz `http://localhost:3000`. Aplikacja automatycznie utworzy tabele w podłączonej bazie PostgreSQL. Przy pierwszym uruchomieniu tymczasowe hasła sześciu kont zostaną wypisane w konsoli. Każdy użytkownik musi zmienić hasło po pierwszym logowaniu.
+Otwórz `http://localhost:3000`. Aplikacja automatycznie utworzy tabele w podłączonej bazie PostgreSQL. Przy pierwszym uruchomieniu tymczasowe hasła pięciu kont zostaną wypisane w konsoli. Każdy użytkownik musi zmienić hasło po pierwszym logowaniu.
 
 ## Wdrożenie na Render
 

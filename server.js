@@ -9,7 +9,6 @@ const DATABASE_URL = process.env.DATABASE_URL;
 const USERS = [
   ["asia", "Asia", 0],
   ["kacper", "Kacper", 0],
-  ["ada", "Ada", 0],
   ["mama", "Mama", 0],
   ["tata", "Tata", 0],
   ["kuba", "Kuba", 1],
@@ -55,6 +54,13 @@ async function initializeDatabase() {
     value TEXT NOT NULL
   );
   `);
+
+  const removedAda = (await db.query("SELECT id FROM users WHERE login = 'ada'")).rows[0];
+  if (removedAda) {
+    await db.query("DELETE FROM assignments");
+    await db.query("DELETE FROM users WHERE id = $1", [removedAda.id]);
+    console.log("Konto Ada zostało usunięte, a losowanie wyczyszczone.");
+  }
 
   for (const [login, name, isAdmin] of USERS) {
     const existing = await db.query("SELECT 1 FROM users WHERE login = $1", [login]);
