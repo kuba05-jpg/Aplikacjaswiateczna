@@ -1,0 +1,25 @@
+# Zmień na unikalną nazwę utworzoną poleceniem: fly apps create
+app = "mikolajki-zmien-mnie"
+primary_region = "waw"
+
+[build]
+
+[env]
+  NODE_ENV = "production"
+  DATA_DIR = "/data"
+  PORT = "3000"
+
+[mounts]
+  source = "mikolajki_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#173d31" />
+    <meta name="description" content="Rodzinne Mikołajki — wishlisty i sekretne losowanie." />
+    <title>Rodzinne Mikołajki</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="snow" aria-hidden="true"></div>
+
+    <main id="login-view" class="login-layout">
+      <section class="welcome-panel">
+        <div class="brand"><span class="brand-mark">✦</span> Rodzinne Mikołajki</div>
+        <div class="welcome-copy">
+          <p class="eyebrow">Grudzień 2026</p>
+          <h1>Najpiękniejsze prezenty zaczynają się od <em>małych marzeń.</em></h1>
+          <p class="lead">
+            Stwórz swoją listę, wylosuj bliską osobę i zachowaj świąteczną tajemnicę aż do
+            spotkania.
+          </p>
+        </div>
+        <div class="ornament" aria-hidden="true">
+          <span>✦</span>
+          <span>❋</span>
+          <span>✦</span>
+        </div>
+      </section>
+
+      <section class="login-panel">
+        <form id="login-form" class="auth-card">
+          <span class="mini-icon">🎁</span>
+          <p class="eyebrow">Witaj ponownie</p>
+          <h2>Zaloguj się</h2>
+          <p class="muted">Twoja świąteczna tajemnica jest tutaj bezpieczna.</p>
+          <label>
+            Login
+            <input name="login" autocomplete="username" placeholder="np. asia" required />
+          </label>
+          <label>
+            Hasło
+            <input
+              name="password"
+              type="password"
+              autocomplete="current-password"
+              placeholder="Twoje hasło"
+              required
+            />
+          </label>
+          <button class="button button-primary button-full" type="submit">
+            Wejdź do środka <span>→</span>
+          </button>
+          <p id="login-error" class="form-message error" role="alert"></p>
+          <p class="login-note">Dostęp tylko dla zaproszonych członków rodziny</p>
+        </form>
+      </section>
+    </main>
+
+    <div id="password-view" class="modal-view hidden">
+      <form id="password-form" class="modal-card">
+        <span class="mini-icon">🔐</span>
+        <p class="eyebrow">Pierwsze logowanie</p>
+        <h2>Ustaw własne hasło</h2>
+        <p class="muted">Hasło startowe jest jednorazowe. Nowe powinno mieć minimum 10 znaków.</p>
+        <label>
+          Obecne hasło
+          <input name="currentPassword" type="password" autocomplete="current-password" required />
+        </label>
+        <label>
+          Nowe hasło
+          <input name="newPassword" type="password" minlength="10" autocomplete="new-password" required />
+        </label>
+        <label>
+          Powtórz nowe hasło
+          <input name="confirmPassword" type="password" minlength="10" autocomplete="new-password" required />
+        </label>
+        <button class="button button-primary button-full" type="submit">Zapisz hasło</button>
+        <p id="password-error" class="form-message error" role="alert"></p>
+      </form>
+    </div>
+
+    <div id="app-view" class="app-shell hidden">
+      <aside class="sidebar">
+        <div class="brand"><span class="brand-mark">✦</span> Mikołajki</div>
+        <nav aria-label="Główna nawigacja">
+          <button class="nav-link active" data-page="home"><span>⌂</span> Start</button>
+          <button class="nav-link" data-page="wishlist"><span>♡</span> Moja lista</button>
+          <button class="nav-link" data-page="assignment"><span>✦</span> Mój los</button>
+          <button class="nav-link" data-page="profile"><span>♙</span> Profil</button>
+          <button id="admin-nav" class="nav-link hidden" data-page="admin">
+            <span>⚙</span> Panel admina
+          </button>
+        </nav>
+        <div class="sidebar-footer">
+          <div class="avatar" id="sidebar-avatar">A</div>
+          <div>
+            <strong id="sidebar-name">Użytkownik</strong>
+            <small id="sidebar-role">Uczestnik</small>
+          </div>
+          <button id="logout-button" class="icon-button" title="Wyloguj" aria-label="Wyloguj">↪</button>
+        </div>
+      </aside>
+
+      <header class="mobile-header">
+        <div class="brand"><span class="brand-mark">✦</span> Mikołajki</div>
+        <button id="menu-button" class="icon-button" aria-label="Otwórz menu">☰</button>
+      </header>
+
+      <main class="content">
+        <section id="page-home" class="page active">
+          <div class="page-heading">
+            <div>
+              <p class="eyebrow">Ho, ho, ho!</p>
+              <h1>Miło Cię widzieć, <span id="home-name">Gościu</span>!</h1>
+              <p class="muted">Święta są już blisko. Zadbaj o swoją listę i wypatruj losowania.</p>
+            </div>
+            <div class="date-pill"><span>❄</span><strong>6 grudnia</strong><small>Mikołajki</small></div>
+          </div>
+
+          <div class="hero-card">
+            <div class="hero-copy">
+              <span id="draw-badge" class="status-badge">● PRZED LOSOWANIEM</span>
+              <h2 id="hero-title">Twoja lista marzeń czeka</h2>
+              <p id="hero-text">Dodaj kilka pomysłów, aby Twój Mikołaj dokładnie wiedział, co sprawi Ci radość.</p>
+              <button class="button button-light" data-go="wishlist">Uzupełnij listę <span>→</span></button>
+            </div>
+            <div class="gift-stack" aria-hidden="true">
+              <div class="gift gift-one"><i></i></div>
+              <div class="gift gift-two"><i></i></div>
+              <div class="gift gift-three"><i></i></div>
+            </div>
+          </div>
+
+          <div class="quick-grid">
+            <button class="quick-card" data-go="wishlist">
+              <span class="quick-icon green">♡</span>
+              <span><strong>Moja wishlista</strong><small id="home-item-count">0 pomysłów na prezent</small></span>
+              <b>→</b>
+            </button>
+            <button class="quick-card" data-go="assignment">
+              <span class="quick-icon red">✦</span>
+              <span><strong>Mój tajny los</strong><small id="home-draw-status">Jeszcze nie wylosowano</small></span>
+              <b>→</b>
+            </button>
+            <button class="quick-card" data-go="profile">
+              <span class="quick-icon gold">✉</span>
+              <span><strong>Dane kontaktowe</strong><small id="home-email-status">Uzupełnij swój e-mail</small></span>
+              <b>→</b>
+            </button>
+          </div>
+
+          <div class="tip-card">
+            <span>✨</span>
+            <div><strong>Świąteczna podpowiedź</strong><p>Dodaj rzeczy z różnych półek cenowych — Mikołaj będzie miał łatwiejszy wybór.</p></div>
+          </div>
+        </section>
+
+        <section id="page-wishlist" class="page">
+          <div class="page-heading compact">
+            <div><p class="eyebrow">Twoje marzenia</p><h1>Moja wishlista</h1><p class="muted">Dodaj do 30 pomysłów. Osoba, która Cię wylosuje, zobaczy zmiany od razu.</p></div>
+          </div>
+          <form id="wishlist-form" class="add-card">
+            <input name="content" maxlength="300" placeholder="O czym marzysz? Np. książka, ciepły szalik…" required />
+            <button class="button button-primary" type="submit">+ Dodaj pomysł</button>
+          </form>
+          <p id="wishlist-message" class="form-message" role="status"></p>
+          <div id="wishlist-list" class="wishlist-list"></div>
+        </section>
+
+        <section id="page-assignment" class="page">
+          <div class="page-heading compact">
+            <div><p class="eyebrow">Świąteczna tajemnica</p><h1>Mój los</h1><p class="muted">Tylko Ty możesz zobaczyć, dla kogo przygotowujesz prezent.</p></div>
+          </div>
+          <div id="assignment-content"></div>
+        </section>
+
+        <section id="page-profile" class="page">
+          <div class="page-heading compact">
+            <div><p class="eyebrow">Twoje konto</p><h1>Profil</h1><p class="muted">Zadbaj o aktualny adres e-mail — wyślemy na niego wynik losowania.</p></div>
+          </div>
+          <div class="settings-grid">
+            <form id="profile-form" class="settings-card">
+              <span class="quick-icon green">✉</span><h2>Adres e-mail</h2>
+              <p class="muted">Tutaj otrzymasz swój sekretny wynik.</p>
+              <label>E-mail<input name="email" type="email" autocomplete="email" placeholder="twoj@email.pl" /></label>
+              <button class="button button-primary" type="submit">Zapisz e-mail</button>
+              <p id="profile-message" class="form-message"></p>
+            </form>
+            <form id="change-password-form" class="settings-card">
+              <span class="quick-icon gold">🔐</span><h2>Zmień hasło</h2>
+              <label>Obecne hasło<input name="currentPassword" type="password" required /></label>
+              <label>Nowe hasło<input name="newPassword" type="password" minlength="10" required /></label>
+              <button class="button button-secondary" type="submit">Zmień hasło</button>
+              <p id="change-password-message" class="form-message"></p>
+            </form>
+          </div>
+        </section>
+
+        <section id="page-admin" class="page">
+          <div class="page-heading compact">
+            <div><p class="eyebrow">Centrum dowodzenia</p><h1>Panel administratora</h1><p class="muted">Sprawdź gotowość grupy i przeprowadź anonimowe losowanie.</p></div>
+          </div>
+          <div id="admin-content"></div>
+        </section>
+      </main>
+    </div>
+
+    <div id="toast" class="toast" role="status"></div>
+    <script src="/app.js" defer></script>
+  </body>
+</html>
