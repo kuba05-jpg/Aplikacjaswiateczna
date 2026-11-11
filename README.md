@@ -45,13 +45,16 @@ Plik `render.yaml` zawiera gotową konfigurację darmowego serwisu, testu zdrowi
 
 1. Umieść repozytorium na GitHubie, GitLabie albo Bitbucket.
 2. Otwórz [Render Dashboard](https://dashboard.render.com/), wybierz **New → Blueprint** i połącz repozytorium.
-3. Render odczyta `render.yaml`. Podczas tworzenia wpisz wartości sekretów SMTP:
+3. Render odczyta `render.yaml` i utworzy serwis oraz bazę.
+4. Zatwierdź Blueprint i poczekaj, aż test `/api/health` uzyska status `healthy`.
+5. Otwórz logi pierwszego uruchomienia i bezpiecznie zapisz wygenerowane hasła startowe.
+
+Wysyłka e-maili jest opcjonalna. Można ją później włączyć w zakładce **Environment** serwisu, dodając:
+
    - `SMTP_HOST` — np. `smtp-relay.brevo.com`,
    - `SMTP_PORT` — np. `587`,
    - `SMTP_USER`,
    - `SMTP_PASS`,
    - `MAIL_FROM` — np. `Mikołajki <potwierdzony@adres.pl>`.
-4. Zatwierdź Blueprint i poczekaj, aż test `/api/health` uzyska status `healthy`.
-5. Otwórz logi pierwszego uruchomienia i bezpiecznie zapisz wygenerowane hasła startowe.
 
 Nie ustawiaj ręcznie `PORT` — Render przekazuje go automatycznie, a aplikacja już nasłuchuje na `0.0.0.0:$PORT`.
