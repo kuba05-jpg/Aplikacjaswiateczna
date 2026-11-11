@@ -81,6 +81,20 @@ async function initializeDatabase() {
     `UPDATE settings SET value = $1 WHERE key = 'instructions' AND value = $2`,
     [DEFAULT_INSTRUCTIONS, LEGACY_DEFAULT_INSTRUCTIONS],
   );
+
+  const temporaryAdminPassword = String(process.env.ADMIN_RESET_PASSWORD || "").trim();
+  if (temporaryAdminPassword) {
+    if (temporaryAdminPassword.length < 4 || temporaryAdminPassword.length > 10) {
+      throw new Error("ADMIN_RESET_PASSWORD musi mieć od 4 do 10 znaków.");
+    }
+    const admin = (await db.query("SELECT id FROM users WHERE login = 'kuba'")).rows[0];
+    await db.query(
+      "UPDATE users SET password_hash = $1, must_change_password = TRUE WHERE id = $2",
+      [bcrypt.hashSync(temporaryAdminPassword, 12), admin.id],
+    );
+    await db.query("DELETE FROM sessions WHERE user_id = $1", [admin.id]);
+    console.log("Hasło administratora zostało tymczasowo zresetowane.");
+  }
 }
 
 const app = express();
