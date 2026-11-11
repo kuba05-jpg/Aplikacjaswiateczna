@@ -164,7 +164,19 @@
             <div><p class="eyebrow">Twoje marzenia</p><h1>Moja wishlista</h1><p class="muted">Dodaj do 30 pomysłów. Osoba, która Cię wylosuje, zobaczy zmiany od razu.</p></div>
           </div>
           <form id="wishlist-form" class="add-card">
-            <input name="content" maxlength="300" placeholder="O czym marzysz? Np. książka, ciepły szalik…" required />
+            <div class="wish-fields">
+              <input name="content" maxlength="300" placeholder="O czym marzysz? Np. książka, ciepły szalik…" required />
+              <div class="wish-extras">
+                <label class="compact-field">
+                  <span>Link do produktu (opcjonalnie)</span>
+                  <input name="productUrl" type="url" maxlength="2000" placeholder="https://sklep.pl/produkt" />
+                </label>
+                <label class="compact-field file-field">
+                  <span>Zdjęcie (opcjonalnie)</span>
+                  <input name="image" type="file" accept="image/jpeg,image/png,image/webp" />
+                </label>
+              </div>
+            </div>
             <button class="button button-primary" type="submit">+ Dodaj pomysł</button>
           </form>
           <p id="wishlist-message" class="form-message" role="status"></p>

@@ -11,6 +11,57 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+function renderWishDetails(item) {
+  const image = item.imageData
+    ? `<img class="wish-image" src="${escapeHtml(item.imageData)}" alt="Zdjęcie: ${escapeHtml(item.content)}" />`
+    : "";
+  const link = item.productUrl
+    ? `<a class="product-link" href="${escapeHtml(item.productUrl)}" target="_blank" rel="noopener noreferrer">Zobacz produkt ↗</a>`
+    : "";
+  return `${image}<div class="wish-copy"><p>${escapeHtml(item.content)}</p>${link}</div>`;
+}
+
+async function compressImage(file) {
+  if (!file) return "";
+  if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+    throw new Error("Wybierz zdjęcie JPG, PNG lub WebP.");
+  }
+  if (file.size > 12 * 1024 * 1024) {
+    throw new Error("Zdjęcie źródłowe może mieć maksymalnie 12 MB.");
+  }
+
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const image = new Image();
+    await new Promise((resolve, reject) => {
+      image.onload = resolve;
+      image.onerror = () => reject(new Error("Nie udało się odczytać zdjęcia."));
+      image.src = objectUrl;
+    });
+    const scale = Math.min(1, 900 / Math.max(image.naturalWidth, image.naturalHeight));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const context = canvas.getContext("2d");
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+    let quality = 0.8;
+    let result = canvas.toDataURL("image/jpeg", quality);
+    while (result.length > 450_000 && quality > 0.35) {
+      quality -= 0.1;
+      result = canvas.toDataURL("image/jpeg", quality);
+    }
+    if (result.length > 450_000) {
+      throw new Error("Zdjęcie jest zbyt duże. Wybierz mniejszy plik.");
+    }
+    return result;
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
 async function api(url, options = {}) {
   const response = await fetch(url, {
     ...options,
@@ -172,7 +223,7 @@ function renderWishlist() {
     .map(
       (item, index) => `<article class="wish-item">
         <span class="wish-number">${index + 1}</span>
-        <p>${escapeHtml(item.content)}</p>
+        ${renderWishDetails(item)}
         <button class="delete-button" data-delete="${item.id}" aria-label="Usuń pozycję">✕</button>
       </article>`,
     )
@@ -194,14 +245,27 @@ $("#wishlist-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = event.currentTarget;
   const content = form.elements.content.value;
+  const productUrl = form.elements.productUrl.value;
+  const imageFile = form.elements.image.files[0];
+  const button = form.querySelector("button[type='submit']");
+  const message = $("#wishlist-message");
+  button.disabled = true;
+  message.textContent = imageFile ? "Przygotowuję zdjęcie…" : "";
+  message.className = "form-message";
   try {
-    await api("/api/wishlist", { method: "POST", body: JSON.stringify({ content }) });
+    const imageData = await compressImage(imageFile);
+    await api("/api/wishlist", {
+      method: "POST",
+      body: JSON.stringify({ content, productUrl, imageData }),
+    });
     form.reset();
     await loadWishlist();
-    $("#wishlist-message").textContent = "Dodano do Twojej listy.";
+    message.textContent = "Dodano do Twojej listy.";
   } catch (failure) {
-    $("#wishlist-message").textContent = failure.message;
-    $("#wishlist-message").classList.add("error");
+    message.textContent = failure.message;
+    message.className = "form-message error";
+  } finally {
+    button.disabled = false;
   }
 });
 
@@ -228,7 +292,7 @@ function renderAssignment() {
     return;
   }
   const items = state.assignment.items.length
-    ? `<ul class="recipient-list">${state.assignment.items.map((item) => `<li>♡ &nbsp;${escapeHtml(item.content)}</li>`).join("")}</ul>`
+    ? `<ul class="recipient-list">${state.assignment.items.map((item) => `<li>${renderWishDetails(item)}</li>`).join("")}</ul>`
     : `<p class="muted">Ta osoba nie dodała jeszcze żadnych pomysłów. Wróć tu później — lista aktualizuje się na żywo.</p>`;
   target.innerHTML = `<article class="assignment-card">
     <div class="assignment-reveal"><p class="eyebrow">Przygotowujesz prezent dla</p><h2 class="assignment-name">${escapeHtml(state.assignment.name)}</h2><p>Niech to pozostanie między nami 🤫</p></div>

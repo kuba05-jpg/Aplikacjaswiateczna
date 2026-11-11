@@ -5,7 +5,7 @@ Prywatna aplikacja dla pięciu osób: Asia, Kacper, Mama, Tata i Kuba (administr
 ## Możliwości
 
 - logowanie bez publicznej rejestracji i hasła zabezpieczone bcrypt,
-- osobna wishlista każdej osoby, aktualizowana na żywo,
+- osobna wishlista każdej osoby z opcjonalnymi linkami i zdjęciami, aktualizowana na żywo,
 - bezpieczne losowanie, w którym nikt nie trafi na siebie i każdy zostanie wylosowany raz,
 - wynik dostępny na koncie wyłącznie dla osoby kupującej prezent,
 - panel administratora bez podglądu wyników innych osób,

@@ -37,6 +37,8 @@ async function initializeDatabase() {
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     content TEXT NOT NULL,
+    product_url TEXT NOT NULL DEFAULT '',
+    image_data TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
   CREATE TABLE IF NOT EXISTS assignments (
@@ -54,6 +56,8 @@ async function initializeDatabase() {
     value TEXT NOT NULL
   );
   `);
+  await db.query("ALTER TABLE wishlist_items ADD COLUMN IF NOT EXISTS product_url TEXT NOT NULL DEFAULT ''");
+  await db.query("ALTER TABLE wishlist_items ADD COLUMN IF NOT EXISTS image_data TEXT NOT NULL DEFAULT ''");
 
   const removedAda = (await db.query("SELECT id FROM users WHERE login = 'ada'")).rows[0];
   if (removedAda) {
@@ -96,7 +100,7 @@ async function initializeDatabase() {
 
 const app = express();
 app.disable("x-powered-by");
-app.use(express.json({ limit: "32kb" }));
+app.use(express.json({ limit: "600kb" }));
 app.use(express.static(path.join(__dirname, "public"), { extensions: ["html"] }));
 
 const loginAttempts = new Map();
@@ -230,17 +234,39 @@ app.put("/api/password", requireAuth, async (req, res) => {
 
 app.get("/api/wishlist", requireAuth, requireReady, async (req, res) => {
   const items = (
-    await db.query("SELECT id, content FROM wishlist_items WHERE user_id = $1 ORDER BY id", [
-      req.user.id,
-    ])
+    await db.query(
+      `SELECT id, content, product_url AS "productUrl", image_data AS "imageData"
+       FROM wishlist_items WHERE user_id = $1 ORDER BY id`,
+      [req.user.id],
+    )
   ).rows;
   res.json({ items });
 });
 
 app.post("/api/wishlist", requireAuth, requireReady, async (req, res) => {
   const content = String(req.body.content || "").trim();
+  const productUrl = String(req.body.productUrl || "").trim();
+  const imageData = String(req.body.imageData || "");
   if (!content || content.length > 300) {
     return res.status(400).json({ error: "Wpisz życzenie (maksymalnie 300 znaków)." });
+  }
+  if (productUrl.length > 2000) {
+    return res.status(400).json({ error: "Link do produktu jest za długi." });
+  }
+  if (productUrl) {
+    try {
+      const parsedUrl = new URL(productUrl);
+      if (!["http:", "https:"].includes(parsedUrl.protocol)) throw new Error("invalid protocol");
+    } catch {
+      return res.status(400).json({ error: "Podaj poprawny link zaczynający się od http:// lub https://." });
+    }
+  }
+  if (
+    imageData &&
+    (imageData.length > 450_000 ||
+      !/^data:image\/(?:jpeg|png|webp);base64,[a-zA-Z0-9+/=]+$/.test(imageData))
+  ) {
+    return res.status(400).json({ error: "Zdjęcie ma nieprawidłowy format albo jest za duże." });
   }
   if (
     Number(
@@ -254,10 +280,11 @@ app.post("/api/wishlist", requireAuth, requireReady, async (req, res) => {
     return res.status(400).json({ error: "Lista może mieć maksymalnie 30 pozycji." });
   }
   const result = await db.query(
-    "INSERT INTO wishlist_items (user_id, content) VALUES ($1, $2) RETURNING id",
-    [req.user.id, content],
+    `INSERT INTO wishlist_items (user_id, content, product_url, image_data)
+     VALUES ($1, $2, $3, $4) RETURNING id`,
+    [req.user.id, content, productUrl, imageData],
   );
-  const item = { id: result.rows[0].id, content };
+  const item = { id: result.rows[0].id, content, productUrl, imageData };
   const giver = (
     await db.query("SELECT giver_id FROM assignments WHERE receiver_id = $1", [req.user.id])
   ).rows[0];
@@ -290,9 +317,11 @@ app.get("/api/assignment", requireAuth, requireReady, async (req, res) => {
   ).rows[0];
   if (!assignment) return res.json({ assignment: null });
   const items = (
-    await db.query("SELECT id, content FROM wishlist_items WHERE user_id = $1 ORDER BY id", [
-      assignment.id,
-    ])
+    await db.query(
+      `SELECT id, content, product_url AS "productUrl", image_data AS "imageData"
+       FROM wishlist_items WHERE user_id = $1 ORDER BY id`,
+      [assignment.id],
+    )
   ).rows;
   const instructions = (
     await db.query("SELECT value FROM settings WHERE key = 'instructions'")
