@@ -221,16 +221,9 @@ app.post("/api/logout", requireAuth, async (req, res) => {
 app.get("/api/me", requireAuth, (req, res) => res.json({ user: publicUser(req.user) }));
 
 app.put("/api/password", requireAuth, async (req, res) => {
-  const currentPassword = String(req.body.currentPassword || "");
   const newPassword = String(req.body.newPassword || "");
   if (newPassword.length < 4 || newPassword.length > 10) {
     return res.status(400).json({ error: "Nowe hasło musi mieć od 4 do 10 znaków." });
-  }
-  const current = (
-    await db.query("SELECT password_hash FROM users WHERE id = $1", [req.user.id])
-  ).rows[0];
-  if (!bcrypt.compareSync(currentPassword, current.password_hash)) {
-    return res.status(400).json({ error: "Obecne hasło jest nieprawidłowe." });
   }
   await db.query(
     "UPDATE users SET password_hash = $1, must_change_password = FALSE WHERE id = $2",

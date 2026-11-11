@@ -126,10 +126,7 @@ $("#password-form").addEventListener("submit", async (event) => {
   try {
     await api("/api/password", {
       method: "PUT",
-      body: JSON.stringify({
-        currentPassword: values.currentPassword,
-        newPassword: values.newPassword,
-      }),
+      body: JSON.stringify({ newPassword: values.newPassword }),
     });
     state.user.mustChangePassword = false;
     event.currentTarget.reset();

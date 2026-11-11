@@ -71,10 +71,6 @@
         <h2>Ustaw własne hasło</h2>
         <p class="muted">Hasło startowe jest jednorazowe. Nowe powinno mieć od 4 do 10 znaków.</p>
         <label>
-          Obecne hasło
-          <input name="currentPassword" type="password" autocomplete="current-password" required />
-        </label>
-        <label>
           Nowe hasło
           <input name="newPassword" type="password" minlength="4" maxlength="10" autocomplete="new-password" required />
         </label>
@@ -196,7 +192,6 @@
             </form>
             <form id="change-password-form" class="settings-card">
               <span class="quick-icon gold">🔐</span><h2>Zmień hasło</h2>
-              <label>Obecne hasło<input name="currentPassword" type="password" required /></label>
               <label>Nowe hasło<input name="newPassword" type="password" minlength="4" maxlength="10" required /></label>
               <button class="button button-secondary" type="submit">Zmień hasło</button>
               <p id="change-password-message" class="form-message"></p>
