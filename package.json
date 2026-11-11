@@ -2,7 +2,7 @@
   "name": "mikolajki",
   "version": "1.0.0",
   "private": true,
-  "description": "Rodzinne Mikołajki: logowanie, wishlisty, losowanie i e-maile",
+  "description": "Święta na Czapli: logowanie, wishlisty, losowanie i e-maile",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

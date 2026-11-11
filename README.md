@@ -1,4 +1,4 @@
-# 🎅 Rodzinne Mikołajki
+# 🎅 Święta na Czapli
 
 Prywatna aplikacja dla sześciu osób: Asia, Kacper, Ada, Mama, Tata i Kuba (administrator).
 

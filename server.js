@@ -15,8 +15,10 @@ const USERS = [
   ["tata", "Tata", 0],
   ["kuba", "Kuba", 1],
 ];
-const DEFAULT_INSTRUCTIONS =
+const LEGACY_DEFAULT_INSTRUCTIONS =
   "Przygotuj prezent z sercem. Nie zdradzaj, kogo wylosowałeś/aś, i przynieś podpisany prezent na nasze rodzinne Mikołajki.";
+const DEFAULT_INSTRUCTIONS =
+  "Przygotuj prezent z sercem. Nie zdradzaj, kogo wylosowałeś/aś, i przynieś podpisany prezent na nasze Święta na Czapli.";
 
 if (!DATABASE_URL) {
   console.error("Brak zmiennej DATABASE_URL. Podłącz bazę PostgreSQL.");
@@ -74,6 +76,10 @@ async function initializeDatabase() {
     `INSERT INTO settings (key, value) VALUES ('instructions', $1)
      ON CONFLICT (key) DO NOTHING`,
     [DEFAULT_INSTRUCTIONS],
+  );
+  await db.query(
+    `UPDATE settings SET value = $1 WHERE key = 'instructions' AND value = $2`,
+    [DEFAULT_INSTRUCTIONS, LEGACY_DEFAULT_INSTRUCTIONS],
   );
 }
 
@@ -497,7 +503,7 @@ app.use((error, req, res, next) => {
 initializeDatabase()
   .then(() => {
     app.listen(PORT, "0.0.0.0", () => {
-      console.log(`Mikołajki działają na http://0.0.0.0:${PORT}`);
+      console.log(`Święta na Czapli działają na http://0.0.0.0:${PORT}`);
     });
   })
   .catch((error) => {
