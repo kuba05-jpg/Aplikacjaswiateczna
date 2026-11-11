@@ -18,10 +18,10 @@ Wymagany jest Node.js 20 lub nowszy.
 
 ```bash
 npm install
-npm start
+DATABASE_URL=postgresql://uzytkownik:haslo@localhost:5432/mikolajki npm start
 ```
 
-Otwórz `http://localhost:3000`. Przy pierwszym uruchomieniu tymczasowe hasła sześciu kont zostaną wypisane w konsoli. Każdy użytkownik musi zmienić hasło po pierwszym logowaniu.
+Otwórz `http://localhost:3000`. Aplikacja automatycznie utworzy tabele w podłączonej bazie PostgreSQL. Przy pierwszym uruchomieniu tymczasowe hasła sześciu kont zostaną wypisane w konsoli. Każdy użytkownik musi zmienić hasło po pierwszym logowaniu.
 
 Bez konfiguracji SMTP wszystkie funkcje poza wysyłką wiadomości działają normalnie.
 
@@ -39,9 +39,9 @@ MAIL_FROM=Mikołajki <potwierdzony@adres.pl>
 
 ## Wdrożenie na Render
 
-Plik `render.yaml` zawiera gotową konfigurację serwisu, testu zdrowia i trwałego dysku dla bazy SQLite.
+Plik `render.yaml` zawiera gotową konfigurację darmowego serwisu, testu zdrowia i darmowej bazy PostgreSQL.
 
-> Render pobiera kod wyłącznie z GitHub, GitLab albo Bitbucket. Repozytorium musi być dostępne u jednego z tych dostawców. Trwały dysk wymaga płatnego serwisu; wariant bez dysku utraci konta, wishlisty i wyniki po restarcie.
+> Render pobiera kod wyłącznie z GitHub, GitLab albo Bitbucket. Repozytorium musi być dostępne u jednego z tych dostawców. Darmowy serwis usypia po 15 minutach bezczynności, a darmowa baza Render wygasa po 30 dniach.
 
 1. Umieść repozytorium na GitHubie, GitLabie albo Bitbucket.
 2. Otwórz [Render Dashboard](https://dashboard.render.com/), wybierz **New → Blueprint** i połącz repozytorium.
@@ -55,43 +55,3 @@ Plik `render.yaml` zawiera gotową konfigurację serwisu, testu zdrowia i trwał
 5. Otwórz logi pierwszego uruchomienia i bezpiecznie zapisz wygenerowane hasła startowe.
 
 Nie ustawiaj ręcznie `PORT` — Render przekazuje go automatycznie, a aplikacja już nasłuchuje na `0.0.0.0:$PORT`.
-
-## Wdrożenie na Fly.io
-
-1. Zainstaluj `flyctl` i zaloguj się poleceniem `fly auth login`.
-2. Utwórz aplikację: `fly apps create unikalna-nazwa`.
-3. Wpisz tę samą nazwę w polu `app` w `fly.toml`.
-4. Utwórz dysk:
-
-   ```bash
-   fly volumes create mikolajki_data --region waw --size 1
-   ```
-
-5. Dodaj sekrety:
-
-   ```bash
-   fly secrets set \
-     SMTP_HOST=smtp-relay.brevo.com \
-     SMTP_PORT=587 \
-     SMTP_USER=login-smtp \
-     SMTP_PASS=klucz-smtp \
-     MAIL_FROM="Mikołajki <potwierdzony@adres.pl>"
-   ```
-
-6. Wdróż jedną maszynę, ponieważ SQLite używa jednego dysku:
-
-   ```bash
-   fly deploy --ha=false
-   ```
-
-Hasła startowe znajdziesz w `fly logs`. Awaryjny reset hasła:
-
-```bash
-fly ssh console -C "node /app/reset-password.js kuba"
-```
-
-Baza danych znajduje się w `/data/mikolajki.db`. Można pobrać jej kopię poleceniem:
-
-```bash
-fly ssh sftp get /data/mikolajki.db
-```

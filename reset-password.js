@@ -1,7 +1,6 @@
 const crypto = require("node:crypto");
-const path = require("node:path");
 const bcrypt = require("bcryptjs");
-const Database = require("better-sqlite3");
+const { Pool } = require("pg");
 
 const login = String(process.argv[2] || "").trim().toLowerCase();
 if (!login) {
@@ -9,19 +8,29 @@ if (!login) {
   process.exit(1);
 }
 
-const dataDir = process.env.DATA_DIR || path.join(__dirname, "data");
-const db = new Database(path.join(dataDir, "mikolajki.db"));
-const user = db.prepare("SELECT id FROM users WHERE login = ?").get(login);
-if (!user) {
-  console.error(`Nie istnieje konto: ${login}`);
+if (!process.env.DATABASE_URL) {
+  console.error("Brak zmiennej DATABASE_URL.");
   process.exit(1);
 }
 
-const password = crypto.randomBytes(6).toString("base64url");
-db.prepare("UPDATE users SET password_hash = ?, must_change_password = 1 WHERE id = ?").run(
-  bcrypt.hashSync(password, 12),
-  user.id,
-);
-db.prepare("DELETE FROM sessions WHERE user_id = ?").run(user.id);
-console.log(`login: ${login}   nowe hasło: ${password}`);
-db.close();
+const db = new Pool({ connectionString: process.env.DATABASE_URL, max: 1 });
+
+async function resetPassword() {
+  const user = (await db.query("SELECT id FROM users WHERE login = $1", [login])).rows[0];
+  if (!user) throw new Error(`Nie istnieje konto: ${login}`);
+
+  const password = crypto.randomBytes(6).toString("base64url");
+  await db.query(
+    "UPDATE users SET password_hash = $1, must_change_password = TRUE WHERE id = $2",
+    [bcrypt.hashSync(password, 12), user.id],
+  );
+  await db.query("DELETE FROM sessions WHERE user_id = $1", [user.id]);
+  console.log(`login: ${login}   nowe hasło: ${password}`);
+}
+
+resetPassword()
+  .catch((error) => {
+    console.error(error.message);
+    process.exitCode = 1;
+  })
+  .finally(() => db.end());

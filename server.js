@@ -1,13 +1,12 @@
 const crypto = require("node:crypto");
-const fs = require("node:fs");
 const path = require("node:path");
 const express = require("express");
 const bcrypt = require("bcryptjs");
-const Database = require("better-sqlite3");
+const { Pool } = require("pg");
 const nodemailer = require("nodemailer");
 
 const PORT = Number(process.env.PORT) || 3000;
-const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");
+const DATABASE_URL = process.env.DATABASE_URL;
 const USERS = [
   ["asia", "Asia", 0],
   ["kacper", "Kacper", 0],
@@ -19,55 +18,64 @@ const USERS = [
 const DEFAULT_INSTRUCTIONS =
   "Przygotuj prezent z sercem. Nie zdradzaj, kogo wylosowałeś/aś, i przynieś podpisany prezent na nasze rodzinne Mikołajki.";
 
-fs.mkdirSync(DATA_DIR, { recursive: true });
-const db = new Database(path.join(DATA_DIR, "mikolajki.db"));
-db.pragma("journal_mode = WAL");
-db.pragma("foreign_keys = ON");
-db.exec(`
+if (!DATABASE_URL) {
+  console.error("Brak zmiennej DATABASE_URL. Podłącz bazę PostgreSQL.");
+  process.exit(1);
+}
+
+const db = new Pool({ connectionString: DATABASE_URL, max: 5 });
+
+async function initializeDatabase() {
+  await db.query(`
   CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY,
+    id SERIAL PRIMARY KEY,
     login TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL,
     password_hash TEXT NOT NULL,
     email TEXT NOT NULL DEFAULT '',
-    is_admin INTEGER NOT NULL DEFAULT 0,
-    must_change_password INTEGER NOT NULL DEFAULT 1
+    is_admin BOOLEAN NOT NULL DEFAULT FALSE,
+    must_change_password BOOLEAN NOT NULL DEFAULT TRUE
   );
   CREATE TABLE IF NOT EXISTS wishlist_items (
-    id INTEGER PRIMARY KEY,
+    id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     content TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
   CREATE TABLE IF NOT EXISTS assignments (
     giver_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     receiver_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
   CREATE TABLE IF NOT EXISTS sessions (
     token_hash TEXT PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    expires_at INTEGER NOT NULL
+    expires_at BIGINT NOT NULL
   );
   CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
   );
-`);
+  `);
 
-const addUser = db.prepare(
-  "INSERT OR IGNORE INTO users (login, name, password_hash, is_admin) VALUES (?, ?, ?, ?)",
-);
-for (const [login, name, isAdmin] of USERS) {
-  if (!db.prepare("SELECT 1 FROM users WHERE login = ?").get(login)) {
-    const password = crypto.randomBytes(6).toString("base64url");
-    addUser.run(login, name, bcrypt.hashSync(password, 12), isAdmin);
-    console.log(`Konto startowe — login: ${login.padEnd(7)} hasło: ${password}`);
+  for (const [login, name, isAdmin] of USERS) {
+    const existing = await db.query("SELECT 1 FROM users WHERE login = $1", [login]);
+    if (!existing.rowCount) {
+      const password = crypto.randomBytes(6).toString("base64url");
+      await db.query(
+        `INSERT INTO users (login, name, password_hash, is_admin)
+         VALUES ($1, $2, $3, $4) ON CONFLICT (login) DO NOTHING`,
+        [login, name, bcrypt.hashSync(password, 12), Boolean(isAdmin)],
+      );
+      console.log(`Konto startowe — login: ${login.padEnd(7)} hasło: ${password}`);
+    }
   }
+  await db.query(
+    `INSERT INTO settings (key, value) VALUES ('instructions', $1)
+     ON CONFLICT (key) DO NOTHING`,
+    [DEFAULT_INSTRUCTIONS],
+  );
 }
-db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('instructions', ?)").run(
-  DEFAULT_INSTRUCTIONS,
-);
 
 const app = express();
 app.disable("x-powered-by");
@@ -91,24 +99,22 @@ function cookies(req) {
   );
 }
 
-function sessionUser(req) {
+async function sessionUser(req) {
   const token = cookies(req).session;
   if (!token) return null;
   const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
-  return (
-    db
-      .prepare(
-        `SELECT u.id, u.login, u.name, u.email, u.is_admin AS isAdmin,
-                u.must_change_password AS mustChangePassword
-         FROM sessions s JOIN users u ON u.id = s.user_id
-         WHERE s.token_hash = ? AND s.expires_at > ?`,
-      )
-      .get(tokenHash, Date.now()) || null
+  const result = await db.query(
+    `SELECT u.id, u.login, u.name, u.email, u.is_admin AS "isAdmin",
+            u.must_change_password AS "mustChangePassword"
+     FROM sessions s JOIN users u ON u.id = s.user_id
+     WHERE s.token_hash = $1 AND s.expires_at > $2`,
+    [tokenHash, Date.now()],
   );
+  return result.rows[0] || null;
 }
 
-function requireAuth(req, res, next) {
-  const user = sessionUser(req);
+async function requireAuth(req, res, next) {
+  const user = await sessionUser(req);
   if (!user) return res.status(401).json({ error: "Zaloguj się ponownie." });
   req.user = user;
   next();
@@ -147,7 +153,7 @@ function publicUser(user) {
   };
 }
 
-app.post("/api/login", (req, res) => {
+app.post("/api/login", async (req, res) => {
   const login = String(req.body.login || "").trim().toLowerCase();
   const password = String(req.body.password || "");
   const key = `${req.ip}:${login}`;
@@ -156,7 +162,7 @@ app.post("/api/login", (req, res) => {
     return res.status(429).json({ error: "Za dużo prób. Spróbuj ponownie za 15 minut." });
   }
 
-  const user = db.prepare("SELECT * FROM users WHERE login = ?").get(login);
+  const user = (await db.query("SELECT * FROM users WHERE login = $1", [login])).rows[0];
   if (!user || !bcrypt.compareSync(password, user.password_hash)) {
     const count = (attempt?.count || 0) + 1;
     loginAttempts.set(key, {
@@ -169,11 +175,10 @@ app.post("/api/login", (req, res) => {
   loginAttempts.delete(key);
   const token = crypto.randomBytes(32).toString("base64url");
   const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
-  db.prepare("DELETE FROM sessions WHERE expires_at <= ?").run(Date.now());
-  db.prepare("INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)").run(
-    tokenHash,
-    user.id,
-    Date.now() + 30 * 24 * 60 * 60 * 1000,
+  await db.query("DELETE FROM sessions WHERE expires_at <= $1", [Date.now()]);
+  await db.query(
+    "INSERT INTO sessions (token_hash, user_id, expires_at) VALUES ($1, $2, $3)",
+    [tokenHash, user.id, Date.now() + 30 * 24 * 60 * 60 * 1000],
   );
   res.setHeader(
     "Set-Cookie",
@@ -184,120 +189,143 @@ app.post("/api/login", (req, res) => {
   res.json({ user: publicUser({ ...user, isAdmin: user.is_admin, mustChangePassword: user.must_change_password }) });
 });
 
-app.post("/api/logout", requireAuth, (req, res) => {
+app.post("/api/logout", requireAuth, async (req, res) => {
   const token = cookies(req).session;
-  db.prepare("DELETE FROM sessions WHERE token_hash = ?").run(
+  await db.query("DELETE FROM sessions WHERE token_hash = $1", [
     crypto.createHash("sha256").update(token).digest("hex"),
-  );
+  ]);
   res.setHeader("Set-Cookie", "session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0");
   res.status(204).end();
 });
 
 app.get("/api/me", requireAuth, (req, res) => res.json({ user: publicUser(req.user) }));
 
-app.put("/api/password", requireAuth, (req, res) => {
+app.put("/api/password", requireAuth, async (req, res) => {
   const currentPassword = String(req.body.currentPassword || "");
   const newPassword = String(req.body.newPassword || "");
   if (newPassword.length < 10 || newPassword.length > 128) {
     return res.status(400).json({ error: "Nowe hasło musi mieć co najmniej 10 znaków." });
   }
-  const current = db.prepare("SELECT password_hash FROM users WHERE id = ?").get(req.user.id);
+  const current = (
+    await db.query("SELECT password_hash FROM users WHERE id = $1", [req.user.id])
+  ).rows[0];
   if (!bcrypt.compareSync(currentPassword, current.password_hash)) {
     return res.status(400).json({ error: "Obecne hasło jest nieprawidłowe." });
   }
-  db.prepare("UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?").run(
-    bcrypt.hashSync(newPassword, 12),
-    req.user.id,
+  await db.query(
+    "UPDATE users SET password_hash = $1, must_change_password = FALSE WHERE id = $2",
+    [bcrypt.hashSync(newPassword, 12), req.user.id],
   );
   res.status(204).end();
 });
 
-app.put("/api/profile", requireAuth, requireReady, (req, res) => {
+app.put("/api/profile", requireAuth, requireReady, async (req, res) => {
   const email = String(req.body.email || "").trim().toLowerCase();
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return res.status(400).json({ error: "Podaj poprawny adres e-mail." });
   }
   if (email.length > 254) return res.status(400).json({ error: "Adres e-mail jest za długi." });
-  db.prepare("UPDATE users SET email = ? WHERE id = ?").run(email, req.user.id);
+  await db.query("UPDATE users SET email = $1 WHERE id = $2", [email, req.user.id]);
   notifyAll("status");
   res.json({ email });
 });
 
-app.get("/api/wishlist", requireAuth, requireReady, (req, res) => {
-  const items = db
-    .prepare("SELECT id, content FROM wishlist_items WHERE user_id = ? ORDER BY id")
-    .all(req.user.id);
+app.get("/api/wishlist", requireAuth, requireReady, async (req, res) => {
+  const items = (
+    await db.query("SELECT id, content FROM wishlist_items WHERE user_id = $1 ORDER BY id", [
+      req.user.id,
+    ])
+  ).rows;
   res.json({ items });
 });
 
-app.post("/api/wishlist", requireAuth, requireReady, (req, res) => {
+app.post("/api/wishlist", requireAuth, requireReady, async (req, res) => {
   const content = String(req.body.content || "").trim();
   if (!content || content.length > 300) {
     return res.status(400).json({ error: "Wpisz życzenie (maksymalnie 300 znaków)." });
   }
   if (
-    db.prepare("SELECT COUNT(*) AS count FROM wishlist_items WHERE user_id = ?").get(req.user.id)
-      .count >= 30
+    Number(
+      (
+        await db.query("SELECT COUNT(*) AS count FROM wishlist_items WHERE user_id = $1", [
+          req.user.id,
+        ])
+      ).rows[0].count,
+    ) >= 30
   ) {
     return res.status(400).json({ error: "Lista może mieć maksymalnie 30 pozycji." });
   }
-  const result = db
-    .prepare("INSERT INTO wishlist_items (user_id, content) VALUES (?, ?)")
-    .run(req.user.id, content);
-  const item = { id: Number(result.lastInsertRowid), content };
-  const giver = db.prepare("SELECT giver_id FROM assignments WHERE receiver_id = ?").get(req.user.id);
+  const result = await db.query(
+    "INSERT INTO wishlist_items (user_id, content) VALUES ($1, $2) RETURNING id",
+    [req.user.id, content],
+  );
+  const item = { id: result.rows[0].id, content };
+  const giver = (
+    await db.query("SELECT giver_id FROM assignments WHERE receiver_id = $1", [req.user.id])
+  ).rows[0];
   if (giver) notify(giver.giver_id, "assignment");
   notifyAll("status");
   res.status(201).json({ item });
 });
 
-app.delete("/api/wishlist/:id", requireAuth, requireReady, (req, res) => {
-  db.prepare("DELETE FROM wishlist_items WHERE id = ? AND user_id = ?").run(
+app.delete("/api/wishlist/:id", requireAuth, requireReady, async (req, res) => {
+  await db.query("DELETE FROM wishlist_items WHERE id = $1 AND user_id = $2", [
     Number(req.params.id),
     req.user.id,
-  );
-  const giver = db.prepare("SELECT giver_id FROM assignments WHERE receiver_id = ?").get(req.user.id);
+  ]);
+  const giver = (
+    await db.query("SELECT giver_id FROM assignments WHERE receiver_id = $1", [req.user.id])
+  ).rows[0];
   if (giver) notify(giver.giver_id, "assignment");
   notifyAll("status");
   res.status(204).end();
 });
 
-app.get("/api/assignment", requireAuth, requireReady, (req, res) => {
-  const assignment = db
-    .prepare(
+app.get("/api/assignment", requireAuth, requireReady, async (req, res) => {
+  const assignment = (
+    await db.query(
       `SELECT u.id, u.name
        FROM assignments a JOIN users u ON u.id = a.receiver_id
-       WHERE a.giver_id = ?`,
+       WHERE a.giver_id = $1`,
+      [req.user.id],
     )
-    .get(req.user.id);
+  ).rows[0];
   if (!assignment) return res.json({ assignment: null });
-  const items = db
-    .prepare("SELECT id, content FROM wishlist_items WHERE user_id = ? ORDER BY id")
-    .all(assignment.id);
-  const instructions = db.prepare("SELECT value FROM settings WHERE key = 'instructions'").get().value;
+  const items = (
+    await db.query("SELECT id, content FROM wishlist_items WHERE user_id = $1 ORDER BY id", [
+      assignment.id,
+    ])
+  ).rows;
+  const instructions = (
+    await db.query("SELECT value FROM settings WHERE key = 'instructions'")
+  ).rows[0].value;
   res.json({ assignment: { name: assignment.name, items, instructions } });
 });
 
-app.get("/api/admin/status", requireAuth, requireReady, requireAdmin, (req, res) => {
-  const users = db
-    .prepare(
+app.get("/api/admin/status", requireAuth, requireReady, requireAdmin, async (req, res) => {
+  const users = (
+    await db.query(
       `SELECT u.id, u.login, u.name, u.email,
-              COUNT(w.id) AS itemCount
+              COUNT(w.id)::INTEGER AS "itemCount"
        FROM users u LEFT JOIN wishlist_items w ON w.user_id = u.id
        GROUP BY u.id ORDER BY u.id`,
     )
-    .all();
-  const drawn = db.prepare("SELECT COUNT(*) AS count FROM assignments").get().count === USERS.length;
-  const instructions = db.prepare("SELECT value FROM settings WHERE key = 'instructions'").get().value;
+  ).rows;
+  const drawn =
+    Number((await db.query("SELECT COUNT(*) AS count FROM assignments")).rows[0].count) ===
+    USERS.length;
+  const instructions = (
+    await db.query("SELECT value FROM settings WHERE key = 'instructions'")
+  ).rows[0].value;
   res.json({ users, drawn, instructions });
 });
 
-app.put("/api/admin/instructions", requireAuth, requireReady, requireAdmin, (req, res) => {
+app.put("/api/admin/instructions", requireAuth, requireReady, requireAdmin, async (req, res) => {
   const instructions = String(req.body.instructions || "").trim();
   if (!instructions || instructions.length > 2000) {
     return res.status(400).json({ error: "Instrukcja musi mieć od 1 do 2000 znaków." });
   }
-  db.prepare("UPDATE settings SET value = ? WHERE key = 'instructions'").run(instructions);
+  await db.query("UPDATE settings SET value = $1 WHERE key = 'instructions'", [instructions]);
   notifyAll("assignment");
   res.status(204).end();
 });
@@ -312,21 +340,32 @@ function shuffled(values) {
 }
 
 app.post("/api/admin/draw", requireAuth, requireReady, requireAdmin, async (req, res) => {
-  if (db.prepare("SELECT COUNT(*) AS count FROM assignments").get().count) {
+  if (Number((await db.query("SELECT COUNT(*) AS count FROM assignments")).rows[0].count)) {
     return res.status(409).json({ error: "Losowanie zostało już przeprowadzone." });
   }
-  const users = db.prepare("SELECT id, name, email FROM users ORDER BY id").all();
+  const users = (await db.query("SELECT id, name, email FROM users ORDER BY id")).rows;
   if (users.some((user) => !user.email)) {
     return res.status(400).json({ error: "Każdy uczestnik musi najpierw podać e-mail." });
   }
 
   const givers = shuffled(users);
   const receivers = [...givers.slice(1), givers[0]];
-  const save = db.transaction(() => {
-    const insert = db.prepare("INSERT INTO assignments (giver_id, receiver_id) VALUES (?, ?)");
-    givers.forEach((giver, index) => insert.run(giver.id, receivers[index].id));
-  });
-  save();
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    for (let index = 0; index < givers.length; index++) {
+      await client.query("INSERT INTO assignments (giver_id, receiver_id) VALUES ($1, $2)", [
+        givers[index].id,
+        receivers[index].id,
+      ]);
+    }
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
   notifyAll("assignment");
 
   const delivery = await sendAllEmails().catch((error) => {
@@ -336,23 +375,31 @@ app.post("/api/admin/draw", requireAuth, requireReady, requireAdmin, async (req,
   res.json({ ok: true, delivery });
 });
 
-app.delete("/api/admin/draw", requireAuth, requireReady, requireAdmin, (req, res) => {
-  db.prepare("DELETE FROM assignments").run();
+app.delete("/api/admin/draw", requireAuth, requireReady, requireAdmin, async (req, res) => {
+  await db.query("DELETE FROM assignments");
   notifyAll("assignment");
   res.status(204).end();
 });
 
-app.post("/api/admin/users/:id/reset-password", requireAuth, requireReady, requireAdmin, (req, res) => {
-  const target = db.prepare("SELECT id, login FROM users WHERE id = ?").get(Number(req.params.id));
-  if (!target) return res.status(404).json({ error: "Nie znaleziono użytkownika." });
-  const password = crypto.randomBytes(6).toString("base64url");
-  db.prepare("UPDATE users SET password_hash = ?, must_change_password = 1 WHERE id = ?").run(
-    bcrypt.hashSync(password, 12),
-    target.id,
-  );
-  db.prepare("DELETE FROM sessions WHERE user_id = ?").run(target.id);
-  res.json({ login: target.login, password });
-});
+app.post(
+  "/api/admin/users/:id/reset-password",
+  requireAuth,
+  requireReady,
+  requireAdmin,
+  async (req, res) => {
+    const target = (
+      await db.query("SELECT id, login FROM users WHERE id = $1", [Number(req.params.id)])
+    ).rows[0];
+    if (!target) return res.status(404).json({ error: "Nie znaleziono użytkownika." });
+    const password = crypto.randomBytes(6).toString("base64url");
+    await db.query(
+      "UPDATE users SET password_hash = $1, must_change_password = TRUE WHERE id = $2",
+      [bcrypt.hashSync(password, 12), target.id],
+    );
+    await db.query("DELETE FROM sessions WHERE user_id = $1", [target.id]);
+    res.json({ login: target.login, password });
+  },
+);
 
 function mailTransport() {
   if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) return null;
@@ -367,23 +414,27 @@ function mailTransport() {
 async function sendResult(userId) {
   const transport = mailTransport();
   if (!transport) throw new Error("SMTP nie jest skonfigurowane.");
-  const result = db
-    .prepare(
+  const result = (
+    await db.query(
       `SELECT giver.email, giver.name AS giver_name, receiver.name AS receiver_name
        FROM assignments a
        JOIN users giver ON giver.id = a.giver_id
        JOIN users receiver ON receiver.id = a.receiver_id
-       WHERE giver.id = ?`,
+       WHERE giver.id = $1`,
+      [userId],
     )
-    .get(userId);
+  ).rows[0];
   if (!result?.email) throw new Error("Brak adresu e-mail lub wyniku losowania.");
-  const instructions = db.prepare("SELECT value FROM settings WHERE key = 'instructions'").get().value;
-  const items = db
-    .prepare(
+  const instructions = (
+    await db.query("SELECT value FROM settings WHERE key = 'instructions'")
+  ).rows[0].value;
+  const items = (
+    await db.query(
       `SELECT w.content FROM wishlist_items w
-       JOIN assignments a ON a.receiver_id = w.user_id WHERE a.giver_id = ? ORDER BY w.id`,
+       JOIN assignments a ON a.receiver_id = w.user_id WHERE a.giver_id = $1 ORDER BY w.id`,
+      [userId],
     )
-    .all(userId);
+  ).rows;
   const list = items.length ? items.map((item) => `• ${item.content}`).join("\n") : "Lista jest jeszcze pusta.";
   await transport.sendMail({
     from: process.env.MAIL_FROM || process.env.SMTP_USER,
@@ -394,7 +445,7 @@ async function sendResult(userId) {
 }
 
 async function sendAllEmails() {
-  const ids = db.prepare("SELECT giver_id FROM assignments").all();
+  const ids = (await db.query("SELECT giver_id FROM assignments")).rows;
   let sent = 0;
   let failed = 0;
   for (const { giver_id: id } of ids) {
@@ -443,6 +494,13 @@ app.use((error, req, res, next) => {
   res.status(500).json({ error: "Wystąpił nieoczekiwany błąd." });
 });
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Mikołajki działają na http://0.0.0.0:${PORT}`);
-});
+initializeDatabase()
+  .then(() => {
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Mikołajki działają na http://0.0.0.0:${PORT}`);
+    });
+  })
+  .catch((error) => {
+    console.error("Nie udało się uruchomić bazy danych:", error);
+    process.exit(1);
+  });
