@@ -209,8 +209,8 @@ app.get("/api/me", requireAuth, (req, res) => res.json({ user: publicUser(req.us
 app.put("/api/password", requireAuth, async (req, res) => {
   const currentPassword = String(req.body.currentPassword || "");
   const newPassword = String(req.body.newPassword || "");
-  if (newPassword.length < 10 || newPassword.length > 128) {
-    return res.status(400).json({ error: "Nowe hasło musi mieć co najmniej 10 znaków." });
+  if (newPassword.length < 4 || newPassword.length > 10) {
+    return res.status(400).json({ error: "Nowe hasło musi mieć od 4 do 10 znaków." });
   }
   const current = (
     await db.query("SELECT password_hash FROM users WHERE id = $1", [req.user.id])
