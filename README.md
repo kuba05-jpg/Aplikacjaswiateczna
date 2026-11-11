@@ -7,8 +7,7 @@ Prywatna aplikacja dla sześciu osób: Asia, Kacper, Ada, Mama, Tata i Kuba (adm
 - logowanie bez publicznej rejestracji i hasła zabezpieczone bcrypt,
 - osobna wishlista każdej osoby, aktualizowana na żywo,
 - bezpieczne losowanie, w którym nikt nie trafi na siebie i każdy zostanie wylosowany raz,
-- wynik widoczny wyłącznie dla osoby kupującej prezent,
-- wysyłka wyniku przez SMTP,
+- wynik dostępny na koncie wyłącznie dla osoby kupującej prezent,
 - panel administratora bez podglądu wyników innych osób,
 - reset haseł i wyników losowania.
 
@@ -23,20 +22,6 @@ DATABASE_URL=postgresql://uzytkownik:haslo@localhost:5432/mikolajki npm start
 
 Otwórz `http://localhost:3000`. Aplikacja automatycznie utworzy tabele w podłączonej bazie PostgreSQL. Przy pierwszym uruchomieniu tymczasowe hasła sześciu kont zostaną wypisane w konsoli. Każdy użytkownik musi zmienić hasło po pierwszym logowaniu.
 
-Bez konfiguracji SMTP wszystkie funkcje poza wysyłką wiadomości działają normalnie.
-
-## Wysyłka e-maili
-
-Ustaw następujące zmienne środowiskowe:
-
-```text
-SMTP_HOST=smtp-relay.brevo.com
-SMTP_PORT=587
-SMTP_USER=login-smtp
-SMTP_PASS=klucz-smtp
-MAIL_FROM=Mikołajki <potwierdzony@adres.pl>
-```
-
 ## Wdrożenie na Render
 
 Plik `render.yaml` zawiera gotową konfigurację darmowego serwisu, testu zdrowia i darmowej bazy PostgreSQL.
@@ -48,13 +33,5 @@ Plik `render.yaml` zawiera gotową konfigurację darmowego serwisu, testu zdrowi
 3. Render odczyta `render.yaml` i utworzy serwis oraz bazę.
 4. Zatwierdź Blueprint i poczekaj, aż test `/api/health` uzyska status `healthy`.
 5. Otwórz logi pierwszego uruchomienia i bezpiecznie zapisz wygenerowane hasła startowe.
-
-Wysyłka e-maili jest opcjonalna. Można ją później włączyć w zakładce **Environment** serwisu, dodając:
-
-   - `SMTP_HOST` — np. `smtp-relay.brevo.com`,
-   - `SMTP_PORT` — np. `587`,
-   - `SMTP_USER`,
-   - `SMTP_PASS`,
-   - `MAIL_FROM` — np. `Mikołajki <potwierdzony@adres.pl>`.
 
 Nie ustawiaj ręcznie `PORT` — Render przekazuje go automatycznie, a aplikacja już nasłuchuje na `0.0.0.0:$PORT`.

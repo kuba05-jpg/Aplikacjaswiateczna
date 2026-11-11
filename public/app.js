@@ -64,7 +64,6 @@ async function enterApp() {
   $("#sidebar-role").textContent = user.isAdmin ? "Administrator" : "Uczestnik";
   $("#home-name").textContent = user.name;
   $("#admin-nav").classList.toggle("hidden", !user.isAdmin);
-  $("#profile-form").elements.email.value = user.email || "";
   connectEvents();
   await Promise.all([loadWishlist(), loadAssignment(), user.isAdmin ? loadAdmin() : null]);
   showPage("home");
@@ -235,40 +234,10 @@ function renderAssignment() {
     <div class="assignment-reveal"><p class="eyebrow">Przygotowujesz prezent dla</p><h2 class="assignment-name">${escapeHtml(state.assignment.name)}</h2><p>Niech to pozostanie między nami 🤫</p></div>
     <div class="assignment-body">
       <div><h3>Wishlista</h3>${items}</div>
-      <div><h3>Instrukcja</h3><div class="instructions">${escapeHtml(state.assignment.instructions)}</div>
-      <button id="email-result-button" class="button button-secondary email-result">✉ Wyślij wynik na e-mail</button></div>
+      <div><h3>Instrukcja</h3><div class="instructions">${escapeHtml(state.assignment.instructions)}</div></div>
     </div>
   </article>`;
-  $("#email-result-button").addEventListener("click", async (event) => {
-    event.currentTarget.disabled = true;
-    try {
-      await api("/api/assignment/email", { method: "POST" });
-      toast("Wynik został wysłany.");
-    } catch (failure) {
-      toast(failure.message, true);
-    } finally {
-      event.currentTarget.disabled = false;
-    }
-  });
 }
-
-$("#profile-form").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const message = $("#profile-message");
-  try {
-    const { email } = await api("/api/profile", {
-      method: "PUT",
-      body: JSON.stringify({ email: event.currentTarget.elements.email.value }),
-    });
-    state.user.email = email;
-    message.textContent = "Adres został zapisany.";
-    message.className = "form-message";
-    $("#home-email-status").textContent = email || "Uzupełnij swój e-mail";
-  } catch (failure) {
-    message.textContent = failure.message;
-    message.className = "form-message error";
-  }
-});
 
 $("#change-password-form").addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -304,8 +273,7 @@ function renderAdmin() {
       ${users
         .map(
           (user) => `<div class="participant-row">
-            <div><strong>${escapeHtml(user.name)}</strong><small>${user.itemCount} poz. na liście · ${escapeHtml(user.email || "brak e-maila")}</small></div>
-            <span class="ready-dot ${user.email ? "" : "missing"}" title="${user.email ? "Gotowy" : "Brak e-maila"}"></span>
+            <div><strong>${escapeHtml(user.name)}</strong><small>${user.itemCount} poz. na liście</small></div>
             <button class="mini-button" data-reset="${user.id}" data-login="${escapeHtml(user.login)}">Reset hasła</button>
           </div>`,
         )
@@ -313,11 +281,11 @@ function renderAdmin() {
     </section>
     <div class="admin-actions">
       <section class="admin-card"><h2>Losowanie</h2>
-        <div class="draw-state"><strong>${drawn ? "✓ Losowanie zakończone" : `${users.filter((user) => user.email).length}/${users.length} osób gotowych`}</strong><small>${drawn ? "Wyniki są widoczne tylko dla uczestników." : "Do losowania każdy potrzebuje e-maila."}</small></div>
+        <div class="draw-state"><strong>${drawn ? "✓ Losowanie zakończone" : `${users.length} uczestników`}</strong><small>${drawn ? "Wyniki są widoczne tylko dla uczestników." : "Wyniki pojawią się na kontach uczestników."}</small></div>
         ${
           drawn
             ? `<button id="reset-draw-button" class="button button-danger">Usuń wyniki losowania</button>`
-            : `<button id="draw-button" class="button button-primary" ${users.some((user) => !user.email) ? "disabled" : ""}>🎲 Przeprowadź losowanie</button>`
+            : `<button id="draw-button" class="button button-primary">🎲 Przeprowadź losowanie</button>`
         }
       </section>
       <form id="instructions-form" class="admin-card"><h2>Instrukcja</h2>
@@ -341,17 +309,12 @@ function renderAdmin() {
   });
 
   $("#draw-button")?.addEventListener("click", async (event) => {
-    if (!confirm("Przeprowadzić losowanie? Wyniki zostaną zapisane i wysłane e-mailem.")) return;
+    if (!confirm("Przeprowadzić losowanie? Wyniki pojawią się na kontach uczestników.")) return;
     event.currentTarget.disabled = true;
     try {
-      const { delivery } = await api("/api/admin/draw", { method: "POST" });
+      await api("/api/admin/draw", { method: "POST" });
       await loadAdmin();
-      toast(
-        delivery.failed
-          ? `Losowanie zakończone. Wysłano ${delivery.sent} maili, ${delivery.failed} nie udało się wysłać.`
-          : "Losowanie zakończone, a wiadomości zostały wysłane!",
-        Boolean(delivery.failed),
-      );
+      toast("Losowanie zakończone. Wyniki są dostępne na kontach uczestników.");
     } catch (failure) {
       toast(failure.message, true);
       event.currentTarget.disabled = false;

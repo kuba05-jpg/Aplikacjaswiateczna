@@ -3,7 +3,6 @@ const path = require("node:path");
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const { Pool } = require("pg");
-const nodemailer = require("nodemailer");
 
 const PORT = Number(process.env.PORT) || 3000;
 const DATABASE_URL = process.env.DATABASE_URL;
@@ -15,8 +14,6 @@ const USERS = [
   ["tata", "Tata", 0],
   ["kuba", "Kuba", 1],
 ];
-const LEGACY_DEFAULT_INSTRUCTIONS =
-  "Przygotuj prezent z sercem. Nie zdradzaj, kogo wylosowałeś/aś, i przynieś podpisany prezent na nasze rodzinne Mikołajki.";
 const DEFAULT_INSTRUCTIONS =
   "Przygotuj prezent z sercem. Nie zdradzaj, kogo wylosowałeś/aś, i przynieś podpisany prezent na nasze Święta na Czapli.";
 
@@ -34,7 +31,6 @@ async function initializeDatabase() {
     login TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL,
     password_hash TEXT NOT NULL,
-    email TEXT NOT NULL DEFAULT '',
     is_admin BOOLEAN NOT NULL DEFAULT FALSE,
     must_change_password BOOLEAN NOT NULL DEFAULT TRUE
   );
@@ -77,11 +73,6 @@ async function initializeDatabase() {
      ON CONFLICT (key) DO NOTHING`,
     [DEFAULT_INSTRUCTIONS],
   );
-  await db.query(
-    `UPDATE settings SET value = $1 WHERE key = 'instructions' AND value = $2`,
-    [DEFAULT_INSTRUCTIONS, LEGACY_DEFAULT_INSTRUCTIONS],
-  );
-
   const temporaryAdminPassword = String(process.env.ADMIN_RESET_PASSWORD || "").trim();
   if (temporaryAdminPassword) {
     if (temporaryAdminPassword.length < 4 || temporaryAdminPassword.length > 10) {
@@ -124,7 +115,7 @@ async function sessionUser(req) {
   if (!token) return null;
   const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
   const result = await db.query(
-    `SELECT u.id, u.login, u.name, u.email, u.is_admin AS "isAdmin",
+    `SELECT u.id, u.login, u.name, u.is_admin AS "isAdmin",
             u.must_change_password AS "mustChangePassword"
      FROM sessions s JOIN users u ON u.id = s.user_id
      WHERE s.token_hash = $1 AND s.expires_at > $2`,
@@ -167,7 +158,6 @@ function publicUser(user) {
     id: user.id,
     login: user.login,
     name: user.name,
-    email: user.email,
     isAdmin: Boolean(user.isAdmin),
     mustChangePassword: Boolean(user.mustChangePassword),
   };
@@ -230,17 +220,6 @@ app.put("/api/password", requireAuth, async (req, res) => {
     [bcrypt.hashSync(newPassword, 12), req.user.id],
   );
   res.status(204).end();
-});
-
-app.put("/api/profile", requireAuth, requireReady, async (req, res) => {
-  const email = String(req.body.email || "").trim().toLowerCase();
-  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    return res.status(400).json({ error: "Podaj poprawny adres e-mail." });
-  }
-  if (email.length > 254) return res.status(400).json({ error: "Adres e-mail jest za długi." });
-  await db.query("UPDATE users SET email = $1 WHERE id = $2", [email, req.user.id]);
-  notifyAll("status");
-  res.json({ email });
 });
 
 app.get("/api/wishlist", requireAuth, requireReady, async (req, res) => {
@@ -318,7 +297,7 @@ app.get("/api/assignment", requireAuth, requireReady, async (req, res) => {
 app.get("/api/admin/status", requireAuth, requireReady, requireAdmin, async (req, res) => {
   const users = (
     await db.query(
-      `SELECT u.id, u.login, u.name, u.email,
+      `SELECT u.id, u.login, u.name,
               COUNT(w.id)::INTEGER AS "itemCount"
        FROM users u LEFT JOIN wishlist_items w ON w.user_id = u.id
        GROUP BY u.id ORDER BY u.id`,
@@ -356,10 +335,7 @@ app.post("/api/admin/draw", requireAuth, requireReady, requireAdmin, async (req,
   if (Number((await db.query("SELECT COUNT(*) AS count FROM assignments")).rows[0].count)) {
     return res.status(409).json({ error: "Losowanie zostało już przeprowadzone." });
   }
-  const users = (await db.query("SELECT id, name, email FROM users ORDER BY id")).rows;
-  if (users.some((user) => !user.email)) {
-    return res.status(400).json({ error: "Każdy uczestnik musi najpierw podać e-mail." });
-  }
+  const users = (await db.query("SELECT id, name FROM users ORDER BY id")).rows;
 
   const givers = shuffled(users);
   const receivers = [...givers.slice(1), givers[0]];
@@ -380,12 +356,7 @@ app.post("/api/admin/draw", requireAuth, requireReady, requireAdmin, async (req,
     client.release();
   }
   notifyAll("assignment");
-
-  const delivery = await sendAllEmails().catch((error) => {
-    console.error("Błąd wysyłki maili:", error.message);
-    return { sent: 0, failed: users.length };
-  });
-  res.json({ ok: true, delivery });
+  res.json({ ok: true });
 });
 
 app.delete("/api/admin/draw", requireAuth, requireReady, requireAdmin, async (req, res) => {
@@ -413,74 +384,6 @@ app.post(
     res.json({ login: target.login, password });
   },
 );
-
-function mailTransport() {
-  if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) return null;
-  return nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT) || 587,
-    secure: Number(process.env.SMTP_PORT) === 465,
-    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-  });
-}
-
-async function sendResult(userId) {
-  const transport = mailTransport();
-  if (!transport) throw new Error("SMTP nie jest skonfigurowane.");
-  const result = (
-    await db.query(
-      `SELECT giver.email, giver.name AS giver_name, receiver.name AS receiver_name
-       FROM assignments a
-       JOIN users giver ON giver.id = a.giver_id
-       JOIN users receiver ON receiver.id = a.receiver_id
-       WHERE giver.id = $1`,
-      [userId],
-    )
-  ).rows[0];
-  if (!result?.email) throw new Error("Brak adresu e-mail lub wyniku losowania.");
-  const instructions = (
-    await db.query("SELECT value FROM settings WHERE key = 'instructions'")
-  ).rows[0].value;
-  const items = (
-    await db.query(
-      `SELECT w.content FROM wishlist_items w
-       JOIN assignments a ON a.receiver_id = w.user_id WHERE a.giver_id = $1 ORDER BY w.id`,
-      [userId],
-    )
-  ).rows;
-  const list = items.length ? items.map((item) => `• ${item.content}`).join("\n") : "Lista jest jeszcze pusta.";
-  await transport.sendMail({
-    from: process.env.MAIL_FROM || process.env.SMTP_USER,
-    to: result.email,
-    subject: "🎅 Twój wynik rodzinnych Mikołajek",
-    text: `Cześć ${result.giver_name}!\n\nWylosowana osoba: ${result.receiver_name}\n\nWishlista:\n${list}\n\nInstrukcja:\n${instructions}\n\nHo, ho, ho!`,
-  });
-}
-
-async function sendAllEmails() {
-  const ids = (await db.query("SELECT giver_id FROM assignments")).rows;
-  let sent = 0;
-  let failed = 0;
-  for (const { giver_id: id } of ids) {
-    try {
-      await sendResult(id);
-      sent++;
-    } catch (error) {
-      failed++;
-      console.error(`Nie udało się wysłać maila użytkownikowi ${id}:`, error.message);
-    }
-  }
-  return { sent, failed };
-}
-
-app.post("/api/assignment/email", requireAuth, requireReady, async (req, res) => {
-  try {
-    await sendResult(req.user.id);
-    res.json({ ok: true });
-  } catch (error) {
-    res.status(503).json({ error: error.message });
-  }
-});
 
 app.get("/api/events", requireAuth, (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
